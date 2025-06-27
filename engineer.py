@@ -1,20 +1,7 @@
 import math
-import os.path
-from sklearn.metrics import roc_curve, auc
-import scienceplots
 import pylorentz
-import seaborn as sns
-from scipy.optimize import minimize
-from atlasify import atlasify
-from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import Dense
-from tensorflow.keras.callbacks import History, EarlyStopping, Callback
-from tensorflow import keras
-import keras_tuner as kt
 import numpy as np
-import matplotlib.pyplot as plt
-
-plt.style.use(["science", "no-latex"])
+import seaborn as sns
 
 
 def data_processing():
@@ -328,78 +315,114 @@ def features(data, number):
 
     np.savetxt("features" + str(number) + ".csv", X=feat, delimiter=",")
 
-def training_model(training, validation, testing):
-    # training, validation and testing are the x_train and y_train combined respectively.
-    # trains model using datasets with engineered features
-    x_train = training[:, 0:-1]
-    y_train = training[:, -1]
-    x_val = validation[:, 0:-1]
-    y_val = validation[:, -1]
-    x_test = testing[:, 0:-1]
-    y_test = testing[:, -1]
-    print(x_train)
-    print(y_train)
 
-    epochs = 100000
 
-    # callbacks
-    history = History()
-    stopping = EarlyStopping(monitor="val_accuracy", patience=100)
+def correlation_plots():
+    feat = np.genfromtxt(fname = "features1.csv", delimiter = ",") # engineered features
+    data = np.genfromtxt(fname = "sample1.csv", delimiter = ",") # original features
 
-    # model
-    model = Sequential()
-    model.add(Dense(20, input_shape=(41,), activation="relu"))
-    model.add(Dense(1, activation="sigmoid"))
-    model.compile(loss="binary_crossentropy", optimizer="adam",metrics=["accuracy"])
-    model.fit(x_train, y_train, epochs=epochs, batch_size=1000, validation_data=(x_val, y_val), callbacks=[history, stopping])
+    photon1 = pylorentz.Momentum4.e_eta_phi_pt(data[:, 3], data[:, 1], data[:, 2], data[:, 0])
+    photon2 = pylorentz.Momentum4.e_eta_phi_pt(data[:, 7], data[:, 5], data[:, 6], data[:, 4])
 
-    # accuracy metrics, writes to a file some specifics about the model and performance for comparison.
-    # if file doesnt exist, create it
-    _, accuracy = model.evaluate(x_test, y_test)
-    f = open("Model_Accuracy.txt", "a")
-    f.write("[20]-0.001-1000" + " Accuracy: " + str(accuracy) + "\n")
-    f.close()
+    di_photon = photon1 + photon2
+    feat = np.concatenate((feat, di_photon.m.reshape(-1, 1)), axis = 1)
 
-    # save model
-    model.save("[20]-0.001-1000.keras")
+    background = feat[0: 125000]
+    signal = feat[125000:]
 
-    # data for plots
-    acc = np.array(history.history["accuracy"])
-    loss = np.array(history.history["loss"])
-    val_acc = np.array(history.history["val_accuracy"])
-    val_loss = np.array(history.history["val_loss"])
-    step = np.arange(len(acc))
+    bkg_cov_matrix = np.corrcoef(background, rowvar=False)
+    sig_cov_matrix = np.corrcoef(signal, rowvar=False)
 
-    f1 = plt.figure(1)
-    plt.plot(step, loss, label="training loss")
-    plt.plot(step, val_loss, label="validation loss")
-    atlasify("Simulation Work in Progress")
-    plt.ylabel("loss")
-    plt.xlabel("epochs")
-    plt.legend()
-    plt.title("Loss over Epochs")
+    names = ["eta_y1", "eta_y2", "pt_yy", "pt_jj", "pt_jj_dagger",
+                    "m_jj", "delta_y_jj", "delta_phi_jj", "delta_eta_jj", "pt_yyj1", # 10
+                    "m_yyj1", "pt_yyjj", "pt_yyjj_dagger", "m_yyjj", "delta_y_yyjj",
+                    "delta_phi_yyjj", "delta_R_yyjj", "m_jjjj", "number_jets", "central_jets", # 20
+                    "high_jet_p_t", "sca_sum_pt_jjjj", "eta_jf", "m_yyjf", "pt_thrust_yy",
+                    "delta_eta_yy", "eta_zepp", "phi_star_yy", "cos_theta_star_yy",
+                    "pt_y1", "phi_y1", "pt_y2", "phi_y2",
+                    "jet1.p_t", "jet1.eta", "jet1.phi",
+                    "jet2.p_t", "jet2.eta", "jet2.phi",
+                    "jet3.p_t", "jet3.eta", "jet3.phi",
+                    "jet4.p_t", "jet4.eta", "jet4.phi",
+                    "pt_yy_myyscaled", "eta_yy", "pt_jf", "delta_theta_yyjf", "m_yy"]
 
-    f2 = plt.figure(2)
-    plt.plot(step, loss-val_loss)
-    atlasify("Simulation Work in Progress")
-    plt.ylabel("delta loss")
-    plt.xlabel("epochs")
-    plt.title("Training - Validation Loss")
+    """
+    f1 = plt.figure(1, figsize=(36,36), dpi=50)
+    sns.heatmap(bkg_cov_matrix, annot = True, fmt = ".2f", square=True, xticklabels=names, yticklabels=names)
+    plt.suptitle("Di-photon Events with Jets", y=0.9)
+    plt.title("Background Correlation Matrix")
+    #plt.savefig("background_correlation.png")
+    #plt.clf()
 
-    f3 = plt.figure(3)
-    plt.plot(step, acc, label="training accuracy")
-    plt.plot(step, val_acc, label="validation accuracy")
-    atlasify("Simulation Work in Progress")
-    plt.ylabel("accuracy")
-    plt.xlabel("epochs")
-    plt.legend()
-    plt.title("Accuracy over Epochs")
+    f2 = plt.figure(2, figsize=(36,36), dpi=50)
+    sns.heatmap(sig_cov_matrix, annot = True, fmt = ".2f", square=True, xticklabels=names, yticklabels=names)
+    plt.suptitle("Di-photon Events with Jets", y=0.9)
+    plt.title("Signal Correlation Matrix")
+    #plt.savefig("signal_correlation.png")
 
-    f4 = plt.figure(4)
-    plt.plot(step, acc - val_acc)
-    atlasify("Simulation Work in Progress")
-    plt.ylabel("delta accuracy")
-    plt.xlabel("epochs")
-    plt.title("Training - Validation Accuracy")
+    #plt.show()
+    """
 
-    plt.show()
+    indices = []
+    for i in range(len(bkg_cov_matrix)-1):
+        if bkg_cov_matrix[-1, i] >= 0.05 or sig_cov_matrix[-1, i] >= 0.05:
+            indices.append(i)
+
+    for i in indices:
+        print(names[i])
+    print(np.array(indices))
+    return np.array(indices)
+
+
+
+def training_data(feat,number):
+    # takes in an array of the features and returns training, validation and testing datasets with the appropriate features removed
+    rng = np.random.default_rng()
+
+    indices = correlation_plots()
+    dataset = np.delete(feat, indices, axis = 1)
+
+    feat_mins = np.min(dataset, axis = 0)
+    feat_maxs = np.max(dataset, axis = 0)
+
+    # normalisation
+    for i in range(len(dataset[0])):
+        dataset[:, i] = (dataset[:, i] - feat_mins[i])/(feat_maxs[i] - feat_mins[i])
+    size = feat.shape[0]
+    background = dataset[0: int(size/2)]
+    signal = dataset[int(size/2):]
+
+    rng.shuffle(background)
+    rng.shuffle(signal)
+
+    # splits background into training, validation and testing
+    bkg_train = background[0:int(0.4*size)]
+    bkg_val = background[int(0.4*size):int(0.45*size)]
+    bkg_test = background[int(0.45*size):]
+
+    # splits signal into training, validation and testing
+    sig_train = signal[0:int(0.4*size)]
+    sig_val = signal[int(0.4*size):int(0.45*size)]
+    sig_test = signal[int(0.45*size):]
+
+    # input datasets
+    x_train = np.concatenate((bkg_train, sig_train))
+    x_val = np.concatenate((bkg_val, sig_val))
+    x_test = np.concatenate((bkg_test, sig_test))
+
+    # output datasets
+    y_train = np.concatenate((np.zeros(len(bkg_train)), np.ones(len(sig_train)))).reshape((-1, 1))
+    y_val = np.concatenate((np.zeros(len(bkg_val)), np.ones(len(sig_val)))).reshape((-1, 1))
+    y_test = np.concatenate((np.zeros(len(bkg_test)), np.ones(len(sig_test)))).reshape((-1, 1))
+
+    # joining both sets for ease of storage
+    training = np.concatenate((x_train, y_train), axis = 1)
+    validation = np.concatenate((x_val, y_val), axis = 1)
+    testing = np.concatenate((x_test, y_test), axis = 1)
+    # shuffles training dataset since we are training in mini-batches
+    rng.shuffle(training)
+
+    # save datasets
+    np.savetxt("training"+str(number)+".csv", training, delimiter = ",")
+    np.savetxt("validation"+str(number)+".csv", validation, delimiter=",")
+    np.savetxt("testing"+str(number)+".csv", testing, delimiter=",")
