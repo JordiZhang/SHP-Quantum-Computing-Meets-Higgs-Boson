@@ -17,7 +17,7 @@ Data contains the transverse momenta $p_T$, energy $E$, pseudorapidity $\eta$, a
 Using these features, we engineered new ones based on [arXiv:2207.00348 [hep-ex]](https://arxiv.org/abs/2207.00348). All the features used can be found in the project report and below.
 To manipulate the data and make new features, we utilized heavily numpy arrays and pylorentz Momentum4 objects to represent each particle. 
 The code used to engineer the features can be found in engineer.py.
-![features](images/features.png
+![features](images/features.png)
 
 ## Dense Neural Network
 We first trained a dense fully connected neural network to act as a benchmark model. The model was trained using the ADAM optimizer with a learning rate of 0.001 and a
